@@ -31,9 +31,10 @@ async function sendViaUsb(data: Uint8Array) {
         throw new Error('WebUSB is not supported in this browser.');
     }
 
-    // Try to reuse an already-authorized device first
-    let device: USBDevice | null = null;
-    const devices: USBDevice[] = await usb.getDevices();
+    // Try to reuse an already-authorized device first (WebUSB API - no built-in TS types in standard lib)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let device: any = null;
+    const devices: any[] = await usb.getDevices();
 
     if (devices && devices.length > 0) {
         device = devices[0];
@@ -62,8 +63,8 @@ async function sendViaUsb(data: Uint8Array) {
         throw new Error('USB device has no configuration.');
     }
 
-    const printerInterface = configuration.interfaces.find((iface) =>
-        iface.alternates.some((alt) => alt.interfaceClass === 0x07),
+    const printerInterface = configuration.interfaces.find((iface: { alternates: Array<{ interfaceClass: number }> }) =>
+        iface.alternates.some((alt: { interfaceClass: number }) => alt.interfaceClass === 0x07),
     );
 
     if (!printerInterface) {
@@ -73,12 +74,15 @@ async function sendViaUsb(data: Uint8Array) {
     const interfaceNumber = printerInterface.interfaceNumber;
     await device.claimInterface(interfaceNumber);
 
-    const alternate = printerInterface.alternates.find((alt) => alt.interfaceClass === 0x07);
+    const alternate = printerInterface.alternates.find(
+        (alt: { interfaceClass: number; endpoints: Array<{ direction: string; endpointNumber: number }> }) =>
+            alt.interfaceClass === 0x07,
+    );
     if (!alternate) {
         throw new Error('No printer alternate setting found.');
     }
 
-    const endpoint = alternate.endpoints.find((ep) => ep.direction === 'out');
+    const endpoint = alternate.endpoints.find((ep: { direction: string; endpointNumber: number }) => ep.direction === 'out');
     if (!endpoint) {
         throw new Error('No OUT endpoint found on printer interface.');
     }
