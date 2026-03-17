@@ -210,11 +210,23 @@ const Orders = () => {
   // Period + search: first filter by period, then by search
   const ordersForPeriod = getOrdersForExport();
   const periodTotals = (() => {
-    const total = ordersForPeriod.reduce((sum, o) => sum + (parseFloat(toMoney(o.order_total)) || 0), 0);
+    const totalSales = ordersForPeriod.reduce(
+      (sum, o) => sum + (parseFloat(toMoney(o.order_total)) || 0),
+      0,
+    );
+    const totalOrderProfit = ordersForPeriod.reduce(
+      (sum, o) => sum + (parseFloat(toMoney(o.order_profit)) || 0),
+      0,
+    );
+    const totalVat = totalSales * 0.15;
+    // Profit: (total sales - 15% VAT) - manufacturing cost of all items
+    // manufacturing = totalSales - totalOrderProfit  => profit = totalOrderProfit - totalVat
+    const totalProfit = totalOrderProfit - totalVat;
     return {
-      totalSales: total,
-      totalVat: total * 0.15,
-      totalProfit: total * 0.85,
+      totalSales,
+      totalVat,
+      totalSalesAfterVat: totalSales * 0.85,
+      totalProfit,
     };
   })();
 
@@ -340,42 +352,53 @@ const Orders = () => {
       doc.text(`Sales: ${toExport.length}`, 40, 64);
       const grandTotal = toExport.reduce((sum, o) => sum + (parseFloat(toMoney(o.order_total)) || 0), 0);
       const totalVat = grandTotal * 0.15;
-      const totalProfit = grandTotal * 0.85;
+      const totalSalesAfterVat = grandTotal * 0.85;
+      const totalOrderProfit = toExport.reduce((sum, o) => sum + (parseFloat(toMoney(o.order_profit)) || 0), 0);
+      const totalProfit = totalOrderProfit - totalVat;
       doc.text(`Total: Rs ${grandTotal.toFixed(2)}`, w - 40, 64, { align: 'right' });
 
-      // Summary cards row: Total Sales, Total VAT, Total Profit
+      // Summary cards row: Total Sales, Total VAT, Total Sales After VAT, Total Profit
       const cardStartY = 90;
       const cardHeight = 60;
       const cardGap = 20;
-      const cardWidth = (w - 80 - cardGap * 2) / 3; // 3 cards, 40pt margins, equal gaps
+      const cardWidth = (w - 80 - cardGap * 3) / 4; // 4 cards, 40pt margins, equal gaps
 
       doc.setDrawColor(230);
       doc.setFillColor(248, 248, 248);
       doc.roundedRect(40, cardStartY, cardWidth, cardHeight, 8, 8, 'FD');
       doc.roundedRect(40 + cardWidth + cardGap, cardStartY, cardWidth, cardHeight, 8, 8, 'FD');
       doc.roundedRect(40 + (cardWidth + cardGap) * 2, cardStartY, cardWidth, cardHeight, 8, 8, 'FD');
+      doc.roundedRect(40 + (cardWidth + cardGap) * 3, cardStartY, cardWidth, cardHeight, 8, 8, 'FD');
 
       doc.setTextColor(40, 40, 40);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
       doc.text('Total Sales', 55, cardStartY + 22);
       doc.text('Total VAT (15%)', 55 + cardWidth + cardGap, cardStartY + 22);
-      doc.text('Total Profit', 55 + (cardWidth + cardGap) * 2, cardStartY + 22);
+      doc.text('Total Sales After VAT', 55 + (cardWidth + cardGap) * 2, cardStartY + 22);
+      doc.text('Total Profit', 55 + (cardWidth + cardGap) * 3, cardStartY + 22);
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(14);
       doc.text(`Rs ${grandTotal.toFixed(2)}`, 55, cardStartY + 45);
       doc.text(`Rs ${totalVat.toFixed(2)}`, 55 + cardWidth + cardGap, cardStartY + 45);
-      doc.text(`Rs ${totalProfit.toFixed(2)}`, 55 + (cardWidth + cardGap) * 2, cardStartY + 45);
+      doc.text(`Rs ${totalSalesAfterVat.toFixed(2)}`, 55 + (cardWidth + cardGap) * 2, cardStartY + 45);
+      doc.text(`Rs ${totalProfit.toFixed(2)}`, 55 + (cardWidth + cardGap) * 3, cardStartY + 45);
 
-      const rows = toExport.map((o) => [
-        String(o.id),
-        o.order_date ? new Date(o.order_date).toLocaleDateString() : '-',
-        renderItemsCell(o.order_items || []).substring(0, 80),
-        `Rs ${toMoney(o.order_total)}`,
-        `Rs ${((parseFloat(toMoney(o.order_total)) || 0) * 0.15).toFixed(2)}`,
-        `Rs ${((parseFloat(toMoney(o.order_total)) || 0) * 0.85).toFixed(2)}`,
-      ]);
+      const rows = toExport.map((o) => {
+        const total = parseFloat(toMoney(o.order_total)) || 0;
+        const vat = total * 0.15;
+        const baseProfit = parseFloat(toMoney(o.order_profit)) || 0;
+        const profitAfterVat = baseProfit - vat;
+        return [
+          String(o.id),
+          o.order_date ? new Date(o.order_date).toLocaleDateString() : '-',
+          renderItemsCell(o.order_items || []).substring(0, 80),
+          `Rs ${toMoney(o.order_total)}`,
+          `Rs ${vat.toFixed(2)}`,
+          `Rs ${profitAfterVat.toFixed(2)}`,
+        ];
+      });
 
       const tableWidth = w - 80;
       const tableStartY = cardStartY + cardHeight + 30;
@@ -522,8 +545,8 @@ const Orders = () => {
         </div>
       </div>
 
-      {/* Summary cards - Total Sales, Total VAT, Total Profit */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
+      {/* Summary cards - Total Sales, Total VAT, Total Sales After VAT, Total Profit */}
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-5">
         <div className="bg-white dark:bg-gray-900 shadow-md rounded-xl p-4 border border-gray-200 dark:border-gray-700">
           <h2 className="text-lg text-gray-500 dark:text-gray-400">Total Sales</h2>
           <p className="text-xl font-semibold text-gray-800 dark:text-white">Rs {periodTotals.totalSales.toFixed(2)}</p>
@@ -531,6 +554,10 @@ const Orders = () => {
         <div className="bg-white dark:bg-gray-900 shadow-md rounded-xl p-4 border border-gray-200 dark:border-gray-700">
           <h2 className="text-lg text-gray-500 dark:text-gray-400">Total VAT (15%)</h2>
           <p className="text-xl font-semibold text-gray-800 dark:text-white">Rs {periodTotals.totalVat.toFixed(2)}</p>
+        </div>
+        <div className="bg-white dark:bg-gray-900 shadow-md rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+          <h2 className="text-lg text-gray-500 dark:text-gray-400">Total Sales After VAT</h2>
+          <p className="text-xl font-semibold text-gray-800 dark:text-white">Rs {periodTotals.totalSalesAfterVat.toFixed(2)}</p>
         </div>
         <div className="bg-white dark:bg-gray-900 shadow-md rounded-xl p-4 border border-gray-200 dark:border-gray-700">
           <h2 className="text-lg text-gray-500 dark:text-gray-400">Total Profit</h2>
@@ -585,7 +612,15 @@ const Orders = () => {
                       </td>
                       <td>Rs {toMoney(order.order_total)}</td>
                       <td>Rs {((parseFloat(toMoney(order.order_total)) || 0) * 0.15).toFixed(2)}</td>
-                      <td>Rs {((parseFloat(toMoney(order.order_total)) || 0) * 0.85).toFixed(2)}</td>
+                      <td>
+                        {(() => {
+                          const total = parseFloat(toMoney(order.order_total)) || 0;
+                          const vat = total * 0.15;
+                          const baseProfit = parseFloat(toMoney(order.order_profit)) || 0;
+                          const profitAfterVat = baseProfit - vat;
+                          return <>Rs {profitAfterVat.toFixed(2)}</>;
+                        })()}
+                      </td>
                       <td>
                         <div className="flex gap-4 items-center justify-center">
                           <button

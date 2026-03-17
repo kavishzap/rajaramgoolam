@@ -106,6 +106,8 @@ import Add  from '../pages/Apps/Invoice/Add';
 const Reporting = lazy(()=> import('../pages/Apps/reporting/reporting'));
 const Company = lazy(()=> import('../pages/Apps/Company'));
 const Expenses = lazy(() => import('../pages/Apps/Expenses'));
+const ExpensesAdd = lazy(() => import('../pages/Apps/ExpensesAdd'));
+const ExpensesEdit = lazy(() => import('../pages/Apps/ExpensesEdit'));
 
 const routes = [
     // login Page
@@ -189,6 +191,14 @@ const routes = [
     {
         path: '/expenses',
         element: <Expenses />,
+    },
+    {
+        path: '/expenses/add',
+        element: <ExpensesAdd />,
+    },
+    {
+        path: '/expenses/edit/:id',
+        element: <ExpensesEdit />,
     },
     // Apps page
     {

@@ -140,13 +140,9 @@ const DashboardSummary: React.FC = () => {
       const totalOrderProfitThisYear = ordersThisYear.reduce((acc, o) => acc + parseAmount(o.order_profit), 0);
       const totalOrderProfitAllTime = orders.reduce((acc, o) => acc + parseAmount(o.order_profit), 0);
 
-      // 💵 Total Sales (all time) for this tenant
-      const totalSalesAllTime = orders.reduce((acc, o) => acc + parseAmount(o.order_total), 0);
-      setTotalSales(totalSalesAllTime);
-
-      // 📅 Total Sales Amount This Year (by amount)
-      const salesThisYearTotal = ordersThisYear.reduce((acc, o) => acc + parseAmount(o.order_total), 0);
-      setTotalSalesThisYear(salesThisYearTotal);
+      // 💵 Orders sales (all time / this year)
+      const ordersSalesAllTime = orders.reduce((acc, o) => acc + parseAmount(o.order_total), 0);
+      const ordersSalesThisYear = ordersThisYear.reduce((acc, o) => acc + parseAmount(o.order_total), 0);
 
       // ☀️🌙 Today sales (local date compare, by amount)
       const todayOrders = orders.filter((o) => toLocalYMD(new Date(o.order_date as any)) === todayStr);
@@ -168,7 +164,7 @@ const DashboardSummary: React.FC = () => {
         inv_date: string | Date | null;
       }>({
         table: 'invoices',
-        select: 'id, inv_profit, inv_company_email, inv_date',
+        select: 'id, inv_profit, inv_total, inv_company_email, inv_date',
         emailColumn: 'inv_company_email',
         email: userEmail,
         orderBy: 'id',
@@ -193,11 +189,41 @@ const DashboardSummary: React.FC = () => {
         0,
       );
 
-      // 🧮 Profit This Year (orders + invoices restricted to current year)
-      setProfitThisYear(totalOrderProfitThisYear + totalInvoiceProfitThisYear);
+      // 💵 Invoice sales (all time / this year)
+      const invoiceSalesAllTime = invoices.reduce(
+        (acc, inv) => acc + parseAmount((inv as any).inv_total),
+        0,
+      );
+      const invoiceSalesThisYear = invoicesThisYear.reduce(
+        (acc, inv) => acc + parseAmount((inv as any).inv_total),
+        0,
+      );
 
-      // 🧮 Total Profit Overall (all-time)
-      setTotalProfitOverall(totalOrderProfitAllTime + totalInvoiceProfitAllTime);
+      // 💵 Combined sales (orders + invoices)
+      const totalSalesAllTime = ordersSalesAllTime + invoiceSalesAllTime;
+      const salesThisYearTotal = ordersSalesThisYear + invoiceSalesThisYear;
+      setTotalSales(totalSalesAllTime);
+      setTotalSalesThisYear(salesThisYearTotal);
+
+      // 🧮 VAT (15%) on sales
+      const vatOrdersThisYear = ordersSalesThisYear * 0.15;
+      const vatInvoicesThisYear = invoiceSalesThisYear * 0.15;
+      const vatOrdersAllTime = ordersSalesAllTime * 0.15;
+      const vatInvoicesAllTime = invoiceSalesAllTime * 0.15;
+
+      // 🧮 Profit This Year (orders + invoices, after 15% VAT)
+      setProfitThisYear(
+        totalOrderProfitThisYear +
+          totalInvoiceProfitThisYear -
+          (vatOrdersThisYear + vatInvoicesThisYear),
+      );
+
+      // 🧮 Total Profit Overall (all-time, after 15% VAT)
+      setTotalProfitOverall(
+        totalOrderProfitAllTime +
+          totalInvoiceProfitAllTime -
+          (vatOrdersAllTime + vatInvoicesAllTime),
+      );
 
       // 💸 Fetch ALL expenses for this company
       const expenses = await fetchAllByEmail<{
@@ -237,7 +263,7 @@ const DashboardSummary: React.FC = () => {
   }, [fetchData]);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-5">
+    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-5">
       {/* 🔢 Total Number of Sales (Order Count) */}
       <div className="panel flex flex-col items-center justify-center text-center">
         <div className="mb-4">
@@ -245,24 +271,6 @@ const DashboardSummary: React.FC = () => {
           <div className="dark:text-[#32a8a4] text-4xl">{totalOrdersCount}</div>
         </div>
         <IconFile className="dark:text-[#32a8a4] opacity-80 w-24 h-24" />
-      </div>
-
-      {/* ✅ Total Sales Amount */}
-      <div className="panel flex flex-col items-center justify-center text-center">
-        <div className="mb-4">
-          <div className="text-lg font-bold mb-2 dark:text-[#32a8a4]">Total Sales Amount</div>
-          <div className="dark:text-[#32a8a4] text-4xl">Rs {formatMoney(totalSales)}</div>
-        </div>
-        <IconFile className="dark:text-[#32a8a4] opacity-80 w-24 h-24" />
-      </div>
-
-      {/* 💰 Total Profit Made Till Now (Overall) */}
-      <div className="panel flex flex-col items-center justify-center text-center">
-        <div className="mb-4">
-          <div className="text-lg font-bold mb-2 dark:text-[#32a8a4]">Total Profit Made Till Now</div>
-          <div className="dark:text-[#32a8a4] text-4xl">Rs {formatMoney(totalProfitOverall)}</div>
-        </div>
-        <IconFile2 className="dark:text-[#32a8a4] opacity-80 w-24 h-24" />
       </div>
 
       {/* ✅ Total Sales Amount This Year */}

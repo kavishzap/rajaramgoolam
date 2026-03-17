@@ -221,20 +221,20 @@ const Products = () => {
             if (error) throw error;
 
             // ✅ Ensure proper mapping of API response
-            const formattedData = data.map((item: any) => ({
-                id: item.id,
-                name: item.product_name,
-                description: item.product_description,
-                sellingPrice: item.product_selling_price,
-                manufacturedPrice: item.product_manufacturing_price,
-                code: item.product_code,
-                category: item.product_category,
-                stock: item.product_qty,
-                supplierId: item.product_supplier_id ?? null,
-                image: item.product_image,
-                day: item.day === 'true',
-                evening: item.evening === 'true',
-            }));
+                const formattedData = data.map((item: any) => ({
+                    id: item.id,
+                    name: item.product_name,
+                    description: item.product_description,
+                    sellingPrice: item.product_selling_price,
+                    manufacturedPrice: item.product_manufacturing_price,
+                    code: item.product_code,
+                    category: item.product_category,
+                    stock: item.product_qty,
+                    supplierId: item.supplier ?? null,
+                    image: item.product_image,
+                    day: item.day === 'true' || item.day === true,
+                    evening: item.evening === 'true' || item.evening === true,
+                }));
 
             setProductList(formattedData);
             setFilteredItems(formattedData);
@@ -334,7 +334,6 @@ const Products = () => {
         if (!params.code) missingFields.push('Product Code');
         if (!params.category) missingFields.push('Category');
         if (!params.stock) missingFields.push('Stock');
-        if (!params.image) missingFields.push('Product Image');
 
         if (missingFields.length > 0) {
             Swal.fire({
@@ -365,16 +364,31 @@ const Products = () => {
                 product_code: params.code,
                 product_category: params.category,
                 product_qty: params.stock,
-                product_supplier_id: params.supplierId || null,
+                supplier: params.supplierId || null,
                 product_image: base64Image,
                 day: params.day,
                 evening: params.evening,
             };
 
+            let error: any = null;
             if (params.id) {
-                await supabase.from('products').update(payload).eq('id', params.id);
+                const { error: updateError } = await supabase.from('products').update(payload).eq('id', params.id);
+                error = updateError;
             } else {
-                await supabase.from('products').insert([payload]);
+                const { error: insertError } = await supabase.from('products').insert([payload]);
+                error = insertError;
+            }
+
+            if (error) {
+                console.error('Supabase products error:', error);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: error.message || 'Failed to save product. Please try again later.',
+                    timer: 4000,
+                    showConfirmButton: false,
+                });
+                return;
             }
 
             Swal.fire({

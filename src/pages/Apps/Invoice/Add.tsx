@@ -121,27 +121,6 @@ const Add: React.FC = (): JSX.Element => {
         fetchCompanyDetails();
     }, [userEmail]);
 
-    // ✅ Fetch Invoice Count from Supabase
-    useEffect(() => {
-        if (!userEmail) return;
-
-        const fetchInvoiceCount = async () => {
-            try {
-                const { count, error } = await supabase
-                    .from('invoices')
-                    .select('*', { count: 'exact', head: true }) // ✅ Proper way to count rows
-                    .eq('inv_company_email', userEmail);
-
-                if (error) throw error;
-
-                setInvoiceNumber(`INV-${(count || 0) + 1}`); // ✅ Ensure count is always valid
-            } catch (error) {
-                console.error('Error fetching invoice count:', error);
-            }
-        };
-
-        fetchInvoiceCount();
-    }, [userEmail]);
 
     useEffect(() => {
         if (!userEmail) return; // Ensure user is authenticated before fetching
@@ -184,7 +163,19 @@ const Add: React.FC = (): JSX.Element => {
         fetchProducts();
     }, [userEmail]); // ✅ Triggered only when `userEmail` changes
 
-    const [invoiceNumber, setInvoiceNumber] = useState('');
+    // Generate a unique invoice number once per mount using UUID / fallback
+    const [invoiceNumber] = useState<string>(() => {
+        try {
+            // Prefer crypto.randomUUID when available
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const uuid = (crypto as any)?.randomUUID
+                ? (crypto as any).randomUUID()
+                : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            return `INV-${uuid}`;
+        } catch {
+            return `INV-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+        }
+    });
 
     useEffect(() => {
         const calculatedSubtotal = items.reduce((sum: any, item: any) => sum + item.quantity * item.rate, 0);
@@ -264,15 +255,93 @@ const Add: React.FC = (): JSX.Element => {
             return; // ✅ STOP execution if validation fails
         }
 
-        try {
-            const { error } = await supabase.from('invoices').insert([
-                {
-                    ...invoiceData,
-                    inv_company_email: userEmail, // ✅ Link invoice to authenticated user
-                },
-            ]);
+        // Helper to generate a fresh unique invoice number on demand
+        const generateInvoiceNumber = () => {
+            try {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const uuid = (crypto as any)?.randomUUID
+                    ? (crypto as any).randomUUID()
+                    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+                return `INV-${uuid}`;
+            } catch {
+                return `INV-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+            }
+        };
 
-            if (error) throw error;
+        try {
+            // ✅ 1) Create invoice and get its ID (with one automatic retry on duplicate inv_num)
+            let invoiceId: number | undefined;
+            let lastError: any = null;
+
+            for (let attempt = 0; attempt < 2; attempt++) {
+                const invNumToUse = attempt === 0 ? invoiceNumber : generateInvoiceNumber();
+                const { data: inserted, error } = await supabase
+                    .from('invoices')
+                    .insert([
+                        {
+                            ...invoiceData,
+                            inv_num: invNumToUse,
+                            inv_company_email: userEmail,
+                        },
+                    ])
+                    .select('id')
+                    .single();
+
+                if (!error) {
+                    invoiceId = inserted?.id as number | undefined;
+                    break;
+                }
+
+                lastError = error;
+                // 23505 = unique violation on inv_num, retry once with a new number
+                if (error.code !== '23505') {
+                    throw error;
+                }
+            }
+
+            if (!invoiceId && lastError) {
+                throw lastError;
+            }
+
+            // ✅ 2) Update stock & stock_movements for each product line
+            // We don't block the invoice if these fail; we just log and move on.
+            for (const item of items) {
+                if (!item.selectedProductId || item.quantity <= 0) continue;
+                const product = productList.find((p) => p.id === item.selectedProductId);
+                const currentQty = product ? Number(product.stock) || 0 : 0;
+                const newQty = currentQty - item.quantity; // can go below 0 if you allow oversell
+
+                try {
+                    // Update product_qty
+                    const { error: updErr } = await supabase
+                        .from('products')
+                        .update({ product_qty: String(newQty) })
+                        .eq('id', item.selectedProductId)
+                        .eq('product_company_email', userEmail);
+                    if (updErr) {
+                        console.error('Failed to update product stock for invoice:', updErr);
+                    }
+
+                    // Insert stock movement
+                    const { error: moveErr } = await supabase.from('stock_movements').insert([
+                        {
+                            movement_company_email: userEmail,
+                            product_id: item.selectedProductId,
+                            quantity_change: -item.quantity,
+                            movement_type: 'invoice',
+                            reference_id: invoiceId ?? null,
+                            reference_type: 'invoice',
+                            note: `Invoice ${invoiceNumber}`,
+                            created_by: userEmail,
+                        },
+                    ]);
+                    if (moveErr) {
+                        console.error('Failed to insert stock movement for invoice:', moveErr);
+                    }
+                } catch (err) {
+                    console.error('Unexpected stock update error for invoice line:', err);
+                }
+            }
 
             Swal.fire({
                 icon: 'success',

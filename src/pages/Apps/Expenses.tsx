@@ -6,12 +6,12 @@ import { setPageTitle } from '../../store/themeConfigSlice';
 import IconSearch from '../../components/Icon/IconSearch';
 import IconX from '../../components/Icon/IconX';
 import IconPlus from '../../components/Icon/IconPlus';
-import { Edit, Delete } from '@mui/icons-material';
+import { Edit, Delete, Visibility } from '@mui/icons-material';
 import { createClient } from '@supabase/supabase-js';
 import { format } from 'date-fns';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-
+import { Link } from 'react-router-dom';
 declare module 'jspdf' {
     interface jsPDF {
         autoTable: (options: any) => jsPDF;
@@ -75,6 +75,7 @@ const Expenses = () => {
     const [filteredItems, setFilteredItems] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [userEmail, setUserEmail] = useState<string | null>(null);
+    const [viewExpense, setViewExpense] = useState<any | null>(null);
 
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
@@ -481,8 +482,8 @@ const Expenses = () => {
         <div>
             <div className="flex items-center justify-between flex-wrap gap-4">
                 <h2 className="text-xl">Expenses</h2>
-                <div className="flex sm:flex-row flex-col sm:items-center sm:gap-3 gap-4 w-full sm:w-auto">
-                    <div className="relative">
+                <div className="flex flex-col sm:flex-row sm:items-end gap-4 w-full sm:w-auto">
+                    <div className="relative sm:w-64">
                         <input
                             type="text"
                             placeholder="Search by note or item..."
@@ -494,54 +495,50 @@ const Expenses = () => {
                             <IconSearch className="mx-auto" />
                         </button>
                     </div>
-                    <button type="button" className="btn btn-primary" onClick={() => editExpense()}>
-                        <IconPlus className="ltr:mr-2 rtl:ml-2" />
-                        Add New Expense
-                    </button>
-                </div>
-            </div>
-
-            <div className="mt-5 panel p-4">
-                <h3 className="text-base font-semibold mb-3">Export</h3>
-                <div className="flex flex-wrap items-end gap-4">
-                    <div className="min-w-[160px]">
-                        <label className="form-label">Period</label>
-                        <select
-                            className="form-select"
-                            value={exportFilterType}
-                            onChange={(e) => setExportFilterType(e.target.value as typeof exportFilterType)}
-                        >
-                            <option value="daily">Today</option>
-                            <option value="monthly">This Month</option>
-                            <option value="yearly">This Year</option>
-                            <option value="custom">Custom Date Range</option>
-                        </select>
+                    <div className="flex flex-wrap items-end gap-3">
+                        <div className="min-w-[160px]">
+                            <label className="form-label">Period</label>
+                            <select
+                                className="form-select"
+                                value={exportFilterType}
+                                onChange={(e) => setExportFilterType(e.target.value as typeof exportFilterType)}
+                            >
+                                <option value="daily">Today</option>
+                                <option value="monthly">This Month</option>
+                                <option value="yearly">This Year</option>
+                                <option value="custom">Custom Date Range</option>
+                            </select>
+                        </div>
+                        {exportFilterType === 'custom' && (
+                            <>
+                                <div>
+                                    <label className="form-label">Start Date</label>
+                                    <input
+                                        type="date"
+                                        className="form-input"
+                                        value={exportStartDate}
+                                        onChange={(e) => setExportStartDate(e.target.value)}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="form-label">End Date</label>
+                                    <input
+                                        type="date"
+                                        className="form-input"
+                                        value={exportEndDate}
+                                        onChange={(e) => setExportEndDate(e.target.value)}
+                                    />
+                                </div>
+                            </>
+                        )}
+                        <button type="button" className="btn btn-outline-primary flex items-center gap-2" onClick={exportToPDF}>
+                            Export to PDF
+                        </button>
+                        <Link to="/expenses/add" className="btn btn-primary flex items-center justify-center gap-2">
+                            <IconPlus className="ltr:mr-2 rtl:ml-2" />
+                            Add New Expense
+                        </Link>
                     </div>
-                    {exportFilterType === 'custom' && (
-                        <>
-                            <div>
-                                <label className="form-label">Start Date</label>
-                                <input
-                                    type="date"
-                                    className="form-input"
-                                    value={exportStartDate}
-                                    onChange={(e) => setExportStartDate(e.target.value)}
-                                />
-                            </div>
-                            <div>
-                                <label className="form-label">End Date</label>
-                                <input
-                                    type="date"
-                                    className="form-input"
-                                    value={exportEndDate}
-                                    onChange={(e) => setExportEndDate(e.target.value)}
-                                />
-                            </div>
-                        </>
-                    )}
-                    <button type="button" className="btn btn-secondary" onClick={exportToPDF}>
-                        Export PDF
-                    </button>
                 </div>
             </div>
 
@@ -578,10 +575,24 @@ const Expenses = () => {
                                             <td>{expense.expense_total || '-'}</td>
                                             <td className="text-center whitespace-nowrap">
                                                 <div className="flex gap-2 items-center justify-center w-max mx-auto">
-                                                    <button type="button" className="btn btn-sm btn-outline-primary shrink-0" onClick={() => editExpense(expense)}>
-                                                        <Edit className="w-5 h-5" />
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-sm btn-outline-primary shrink-0"
+                                                        onClick={() => setViewExpense(expense)}
+                                                    >
+                                                        <Visibility className="w-5 h-5" />
                                                     </button>
-                                                    <button type="button" className="btn btn-sm btn-outline-danger shrink-0" onClick={() => deleteExpense(expense)}>
+                                                    <Link
+                                                        to={`/expenses/edit/${expense.id}`}
+                                                        className="btn btn-sm btn-outline-primary shrink-0"
+                                                    >
+                                                        <Edit className="w-5 h-5" />
+                                                    </Link>
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-sm btn-outline-danger shrink-0"
+                                                        onClick={() => deleteExpense(expense)}
+                                                    >
                                                         <Delete className="w-5 h-5" />
                                                     </button>
                                                 </div>
@@ -717,39 +728,6 @@ const Expenses = () => {
                                             )}
                                         </div>
 
-                                        <div className="mb-5">
-                                            <label htmlFor="expense_image">Receipt (Image)</label>
-                                            <input
-                                                id="expense_image"
-                                                type="file"
-                                                accept="image/*"
-                                                className="form-input"
-                                                onChange={(e) =>
-                                                    setParams({
-                                                        ...params,
-                                                        expense_image_base64: e.target.files?.[0] || null,
-                                                    })
-                                                }
-                                            />
-                                            {params.expense_image_base64 && (
-                                                <div className="mt-2">
-                                                    {params.expense_image_base64 instanceof File ? (
-                                                        <img
-                                                            src={URL.createObjectURL(params.expense_image_base64)}
-                                                            alt="Preview"
-                                                            className="w-24 h-24 object-cover rounded border"
-                                                        />
-                                                    ) : (
-                                                        <img
-                                                            src={`data:image/jpeg;base64,${params.expense_image_base64}`}
-                                                            alt="Receipt"
-                                                            className="w-24 h-24 object-cover rounded border"
-                                                        />
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-
                                         <div className="flex justify-end items-center mt-8 gap-2">
                                             <button type="button" className="btn btn-outline-danger" onClick={() => setAddExpenseModal(false)}>
                                                 Cancel
@@ -757,6 +735,78 @@ const Expenses = () => {
                                             <button type="button" className="btn btn-primary" onClick={saveExpense}>
                                                 {params.id ? 'Update' : 'Add'}
                                             </button>
+                                        </div>
+                                    </div>
+                                </Dialog.Panel>
+                            </Transition.Child>
+                        </div>
+                    </div>
+                </Dialog>
+            </Transition>
+            {/* View Expense Modal (read-only) */}
+            <Transition appear show={viewExpense !== null} as={Fragment}>
+                <Dialog as="div" open={viewExpense !== null} onClose={() => setViewExpense(null)} className="relative z-[51]">
+                    <Transition.Child
+                        as={Fragment}
+                        enter="ease-out duration-300"
+                        enterFrom="opacity-0"
+                        enterTo="opacity-100"
+                        leave="ease-in duration-200"
+                        leaveFrom="opacity-100"
+                        leaveTo="opacity-0"
+                    >
+                        <div className="fixed inset-0 bg-[black]/60" />
+                    </Transition.Child>
+                    <div className="fixed inset-0 overflow-y-auto">
+                        <div className="flex min-h-full items-center justify-center px-4 py-8">
+                            <Transition.Child
+                                as={Fragment}
+                                enter="ease-out duration-300"
+                                enterFrom="opacity-0 scale-95"
+                                enterTo="opacity-100 scale-100"
+                                leave="ease-in duration-200"
+                                leaveFrom="opacity-100 scale-100"
+                                leaveTo="opacity-0 scale-95"
+                            >
+                                <Dialog.Panel className="panel border-0 p-0 rounded-lg overflow-hidden w-full max-w-lg text-black dark:text-white-dark">
+                                    <button
+                                        type="button"
+                                        onClick={() => setViewExpense(null)}
+                                        className="absolute top-4 ltr:right-4 rtl:left-4 text-gray-400 hover:text-gray-800 dark:hover:text-gray-600 outline-none"
+                                    >
+                                        <IconX />
+                                    </button>
+                                    <div className="text-lg font-medium bg-[#fbfbfb] dark:bg-[#121c2c] ltr:pl-5 rtl:pr-5 py-3 ltr:pr-[50px] rtl:pl-[50px]">
+                                        View Expense
+                                    </div>
+                                    <div className="p-5 space-y-4">
+                                        <div>
+                                            <span className="font-semibold">Date:</span>{' '}
+                                            <span>{viewExpense?.expense_date}</span>
+                                        </div>
+                                        <div>
+                                            <span className="font-semibold">Note:</span>{' '}
+                                            <span>{viewExpense?.expense_note || '-'}</span>
+                                        </div>
+                                        <div>
+                                            <span className="font-semibold">Items:</span>
+                                            <div className="mt-2 space-y-1 text-sm">
+                                                {viewExpense &&
+                                                    Object.entries(viewExpense.expense_items || {}).map(([k, v]) => (
+                                                        <div key={k}>
+                                                            {k}: {v}
+                                                        </div>
+                                                    ))}
+                                                {viewExpense &&
+                                                    (!viewExpense.expense_items ||
+                                                        Object.keys(viewExpense.expense_items || {}).length === 0) && (
+                                                        <div>-</div>
+                                                    )}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <span className="font-semibold">Total:</span>{' '}
+                                            <span>{viewExpense?.expense_total || '-'}</span>
                                         </div>
                                     </div>
                                 </Dialog.Panel>

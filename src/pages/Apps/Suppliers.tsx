@@ -23,6 +23,7 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 interface Supplier {
     id: number | null;
+    nic?: string | null;
     fname: string;
     lname: string;
     email: string;
@@ -31,6 +32,7 @@ interface Supplier {
 }
 
 interface Errors {
+    nic?: string;
     fname?: string;
     lname?: string;
     email?: string;
@@ -48,6 +50,7 @@ const Suppliers = () => {
     const [addSupplierModal, setAddSupplierModal] = useState<boolean>(false);
     const [params, setParams] = useState<Supplier>({
         id: null,
+        nic: '',
         fname: '',
         lname: '',
         email: '',
@@ -103,6 +106,7 @@ const Suppliers = () => {
 
             const formatted: Supplier[] = (data || []).map((item: any) => ({
                 id: item.id,
+                nic: item.nic ?? null,
                 fname: item.fname,
                 lname: item.lname,
                 email: item.email,
@@ -141,6 +145,7 @@ const Suppliers = () => {
         const filtered = supplierList.filter((item) => {
             const term = search.toLowerCase().trim();
             return (
+                (item.nic || '').toLowerCase().includes(term) ||
                 item.fname.toLowerCase().includes(term) ||
                 item.lname.toLowerCase().includes(term) ||
                 item.email.toLowerCase().includes(term) ||
@@ -180,6 +185,7 @@ const Suppliers = () => {
 
         const payload = {
             supplier_company_email: userEmail,
+            nic: params.nic && params.nic.trim() ? params.nic.trim() : null,
             fname: params.fname,
             lname: params.lname,
             email: params.email,
@@ -211,6 +217,7 @@ const Suppliers = () => {
             setAddSupplierModal(false);
             setParams({
                 id: null,
+                nic: '',
                 fname: '',
                 lname: '',
                 email: '',
@@ -236,6 +243,7 @@ const Suppliers = () => {
         } else {
             setParams({
                 id: null,
+                nic: '',
                 fname: '',
                 lname: '',
                 email: '',
@@ -321,6 +329,7 @@ const Suppliers = () => {
                 s.fname || '-',
                 s.lname || '-',
                 (s.email || '-').substring(0, 40),
+                s.nic || '-',
                 s.phone || '-',
                 (s.address || '-').substring(0, 55),
             ]);
@@ -328,17 +337,18 @@ const Suppliers = () => {
             const tableWidth = w - 80;
             (doc as any).autoTable({
                 startY: 90,
-                head: [['First Name', 'Last Name', 'Email', 'Phone', 'Address']],
+                head: [['First Name', 'Last Name', 'Email', 'NIC Number', 'Phone', 'Address']],
                 body: rows,
                 theme: 'striped',
                 styles: { font: 'helvetica', fontSize: 9, cellPadding: 5 },
                 headStyles: { fillColor: [13, 131, 144], textColor: 255, fontStyle: 'bold' },
                 columnStyles: {
-                    0: { cellWidth: 75 },
-                    1: { cellWidth: 75 },
-                    2: { cellWidth: 130 },
-                    3: { cellWidth: 95 },
-                    4: { cellWidth: 140 },
+                    0: { cellWidth: 70 },
+                    1: { cellWidth: 70 },
+                    2: { cellWidth: 120 },
+                    3: { cellWidth: 60 },
+                    4: { cellWidth: 80 },
+                    5: { cellWidth: 115 },
                 },
                 margin: { left: 40, right: 40 },
                 tableWidth,
@@ -419,6 +429,7 @@ const Suppliers = () => {
                                         <th>First Name</th>
                                         <th>Last Name</th>
                                         <th>Email</th>
+                                        <th>NIC Number</th>
                                         <th>Phone</th>
                                         <th>Address</th>
                                         <th className="!text-center">Actions</th>
@@ -430,6 +441,7 @@ const Suppliers = () => {
                                             <td>{supplier.fname}</td>
                                             <td>{supplier.lname}</td>
                                             <td>{supplier.email}</td>
+                                            <td>{supplier.nic || '-'}</td>
                                             <td>{supplier.phone}</td>
                                             <td>{supplier.address}</td>
                                             <td>
@@ -525,6 +537,18 @@ const Suppliers = () => {
                                     <div className="p-5">
                                         <form>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                                <div className="mb-5">
+                                                    <label htmlFor="nic">NIC Number</label>
+                                                    <input
+                                                        id="nic"
+                                                        type="text"
+                                                        placeholder="Enter NIC Number"
+                                                        className={`form-input ${errors.nic ? 'border-red-500' : ''}`}
+                                                        value={params.nic || ''}
+                                                        onChange={changeValue}
+                                                    />
+                                                    {errors.nic && <p className="text-red-500 text-sm mt-1">{errors.nic}</p>}
+                                                </div>
                                                 <div className="mb-5">
                                                     <label htmlFor="fname">First Name</label>
                                                     <input

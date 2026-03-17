@@ -81,10 +81,11 @@ const RevenueChart: React.FC<RevenueChartProps> = ({ isDark, isRtl }) => {
       // ✅ Orders (chunked)
       const orders = await fetchAllByEmail<{
         order_date: string | Date | null;
+        created_at?: string | Date | null;
         order_total: unknown;
       }>({
         table: 'orders',
-        select: 'order_date, order_total, order_company_email',
+        select: 'order_date, created_at, order_total, order_company_email',
         emailColumn: 'order_company_email',
         email: userEmail,
         orderBy: 'id',
@@ -93,11 +94,11 @@ const RevenueChart: React.FC<RevenueChartProps> = ({ isDark, isRtl }) => {
 
       // ✅ Invoices (chunked)
       const invoices = await fetchAllByEmail<{
-        inv_due_date: string | Date | null;
+        inv_date: string | Date | null;
         inv_total: unknown;
       }>({
         table: 'invoices',
-        select: 'inv_due_date, inv_total, inv_company_email',
+        select: 'inv_date, inv_total, inv_company_email',
         emailColumn: 'inv_company_email',
         email: userEmail,
         orderBy: 'id',
@@ -109,10 +110,11 @@ const RevenueChart: React.FC<RevenueChartProps> = ({ isDark, isRtl }) => {
       let yearlySalesTotal = 0;
       let yearlyInvoiceTotal = 0;
 
-      // Aggregate orders
+      // Aggregate orders (use order_date, fallback to created_at)
       for (const o of orders) {
-        if (!o?.order_date) continue;
-        const d = new Date(o.order_date as any);
+        const rawDate = o?.order_date || o?.created_at;
+        if (!rawDate) continue;
+        const d = new Date(rawDate as any);
         if (d.getFullYear() !== currentYear) continue;
         const m = d.getMonth(); // 0..11
         const amt = parseAmount(o.order_total);
@@ -120,10 +122,10 @@ const RevenueChart: React.FC<RevenueChartProps> = ({ isDark, isRtl }) => {
         yearlySalesTotal += amt;
       }
 
-      // Aggregate invoices
+      // Aggregate invoices (use invoice date, not due date)
       for (const inv of invoices) {
-        if (!inv?.inv_due_date) continue;
-        const d = new Date(inv.inv_due_date as any);
+        if (!inv?.inv_date) continue;
+        const d = new Date(inv.inv_date as any);
         if (d.getFullYear() !== currentYear) continue;
         const m = d.getMonth();
         const amt = parseAmount(inv.inv_total);
