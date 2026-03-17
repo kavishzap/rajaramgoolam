@@ -793,9 +793,7 @@ const Expenses = () => {
                                             <div className="mt-2 space-y-1 text-sm">
                                                 {viewExpense &&
                                                     Object.entries(viewExpense.expense_items || {}).map(([k, v]) => (
-                                                        <div key={k}>
-                                                            {k}: {v}
-                                                        </div>
+                                                        <div key={k}>{`${k}: ${v}`}</div>
                                                     ))}
                                                 {viewExpense &&
                                                     (!viewExpense.expense_items ||
