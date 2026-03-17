@@ -300,7 +300,7 @@ const DashboardSummary: React.FC = () => {
       {/* ✅ Profit This Year */}
       <div className="panel flex flex-col items-center justify-center text-center">
         <div className="mb-4">
-          <div className="text-lg font-bold mb-2 dark:text-[#32a8a4]">Profit This Year</div>
+          <div className="text-lg font-bold mb-2 dark:text-[#32a8a4]">Profit This Year Via Sales</div>
           <div className="dark:text-[#32a8a4] text-4xl">Rs {formatMoney(profitThisYear)}</div>
         </div>
         <IconNotes className="dark:text-[#32a8a4] opacity-80 w-24 h-24" />
