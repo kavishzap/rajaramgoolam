@@ -10,7 +10,6 @@ import IconBookmark from '../Icon/IconBookmark';
 import IconNotes from '../Icon/IconNotes';
 import IconLogout from '../Icon/IconLogout';
 import IconHome from '../Icon/IconHome';
-import IconInbox from '../Icon/IconInbox';
 import CompanyIcon from '../Icon/IconSettings';
 import IconUsers from '../Icon/IconUsers';
 import IconServer from '../Icon/IconServer';
@@ -152,6 +151,15 @@ const Sidebar = () => {
                                     </li>
 
                                     <li className="nav-item">
+                                        <NavLink to="/real-orders" className="group">
+                                            <div className="flex items-center">
+                                                <IconShoppingCart className="group-hover:!text-primary shrink-0" />
+                                                <span className="ltr:pl-3 rtl:pr-3 text-black dark:text-[#506690] dark:group-hover:text-white-dark">{t('real_order')}</span>
+                                            </div>
+                                        </NavLink>
+                                    </li>
+
+                                    <li className="nav-item">
                                         <NavLink to="/products" className="group">
                                             <div className="flex items-center">
                                                 <IconBox className="group-hover:!text-primary shrink-0" />
@@ -187,14 +195,14 @@ const Sidebar = () => {
                                         </NavLink>
                                     </li>
 
-                                    <li className="nav-item">
+                                    {/* <li className="nav-item">
                                         <NavLink to="/invoice" className="group">
                                             <div className="flex items-center">
                                                 <IconInbox className="group-hover:!text-primary shrink-0" />
                                                 <span className="ltr:pl-3 rtl:pr-3 text-black dark:text-[#506690] dark:group-hover:text-white-dark">{t('Invoices')}</span>
                                             </div>
                                         </NavLink>
-                                    </li>
+                                    </li> */}
 
                                     <li className="nav-item">
                                         <NavLink to="/expenses" className="group">

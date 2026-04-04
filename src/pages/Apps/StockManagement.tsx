@@ -203,7 +203,9 @@ const StockManagement = () => {
             return;
         }
 
-        const newQty = selectedProduct.currentQty + qtyNumber;
+        const absQty = Math.abs(qtyNumber);
+        const signedChange = adjustType === 'out' ? -absQty : absQty;
+        const newQty = selectedProduct.currentQty + signedChange;
         if (newQty < 0) {
             Swal.fire({
                 icon: 'warning',
@@ -233,7 +235,7 @@ const StockManagement = () => {
                     {
                         movement_company_email: userEmail,
                         product_id: selectedProduct.id,
-                        quantity_change: qtyNumber,
+                        quantity_change: signedChange,
                         movement_type: adjustType,
                         note: adjustNote || null,
                     },
@@ -558,7 +560,7 @@ const StockManagement = () => {
                                                 <h4 className="text-sm font-semibold">Adjust stock</h4>
                                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
                                                     <div>
-                                                        <label className="text-xs block mb-1">Quantity (+ add / - remove)</label>
+                                                        <label className="text-xs block mb-1">Quantity (In adds, Out subtracts)</label>
                                                         <input
                                                             type="number"
                                                             className="form-input"

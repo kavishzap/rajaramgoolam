@@ -1,4 +1,4 @@
-import { useState, Fragment, useEffect, useCallback } from 'react';
+import { useState, Fragment, useEffect, useCallback, useMemo } from 'react';
 import Tippy from '@tippyjs/react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -21,6 +21,8 @@ const supabaseAnonKey = import.meta.env.VITE_REACT_APP_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const PAGE_SIZE = 1000;
+/** Duplicate / archive orders table (no order_number column in use). */
+const REAL_ORDERS_TABLE = 'orders_duplicate';
 
 /** Safe money formatter */
 function toMoney(value: unknown): string {
@@ -89,10 +91,79 @@ function calcLineTotal(item: any): number {
   return total;
 }
 
-const Orders = () => {
+type VatProductRow = {
+  id: number;
+  product_code?: string | null;
+  product_name?: string | null;
+  product_selling_price: unknown;
+};
+
+type VatLookup = {
+  byId: Map<number, number>;
+  byCode: Map<string, number>;
+  byName: Map<string, number>;
+};
+
+function buildVatLookup(rows: VatProductRow[]): VatLookup {
+  const byId = new Map<number, number>();
+  const byCode = new Map<string, number>();
+  const byName = new Map<string, number>();
+  for (const p of rows) {
+    const sp = parseFloat(toMoney(p.product_selling_price)) || 0;
+    if (Number.isFinite(p.id)) byId.set(p.id, sp);
+    if (p.product_code != null && String(p.product_code).trim()) {
+      byCode.set(String(p.product_code).trim().toLowerCase(), sp);
+    }
+    if (p.product_name != null && String(p.product_name).trim()) {
+      byName.set(String(p.product_name).trim().toLowerCase(), sp);
+    }
+  }
+  return { byId, byCode, byName };
+}
+
+/** Unit selling from products table when line matches id/code/name; else line snapshot price. */
+function unitSellingForVat(row: any, lookup: VatLookup): number {
+  const pid = row?.product_id ?? row?.productId;
+  if (pid != null && String(pid).trim() !== '') {
+    const idNum = Number(pid);
+    if (Number.isFinite(idNum) && lookup.byId.has(idNum)) return lookup.byId.get(idNum)!;
+  }
+  if (row?.code != null && String(row.code).trim()) {
+    const k = String(row.code).trim().toLowerCase();
+    if (lookup.byCode.has(k)) return lookup.byCode.get(k)!;
+  }
+  if (row?.name != null && String(row.name).trim()) {
+    const k = String(row.name).trim().toLowerCase();
+    if (lookup.byName.has(k)) return lookup.byName.get(k)!;
+  }
+  return parseFloat(toMoney(row?.price)) || 0;
+}
+
+/** Sum of (catalog selling × qty) for each line and addon row. */
+function taxableSellingTotalForOrder(order: any, lookup: VatLookup): number {
+  const items = Array.isArray(order?.order_items) ? order.order_items : [];
+  let sum = 0;
+  for (const item of items) {
+    const qty = Number(item?.quantity) || 0;
+    sum += unitSellingForVat(item, lookup) * qty;
+    if (Array.isArray(item?.addons)) {
+      for (const a of item.addons) {
+        const aq = Number(a?.quantity) || 0;
+        sum += unitSellingForVat(a, lookup) * aq;
+      }
+    }
+  }
+  return sum;
+}
+
+function orderVat15FromProducts(order: any, lookup: VatLookup): number {
+  return taxableSellingTotalForOrder(order, lookup) * 0.15;
+}
+
+const RealOrders = () => {
   const dispatch = useDispatch();
   useEffect(() => {
-    dispatch(setPageTitle('Sales'));
+    dispatch(setPageTitle('Real Order'));
   }, [dispatch]);
 
   const [orderList, setOrderList] = useState<any[]>([]);
@@ -103,6 +174,9 @@ const Orders = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [search, setSearch] = useState<string>('');
   const [viewOrder, setViewOrder] = useState<any | null>(null);
+  const [vatProducts, setVatProducts] = useState<VatProductRow[]>([]);
+
+  const vatLookup = useMemo(() => buildVatLookup(vatProducts), [vatProducts]);
 
   // Client-side pagination
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -116,8 +190,8 @@ const Orders = () => {
     while (true) {
       const to = from + PAGE_SIZE - 1;
       const { data, error } = await supabase
-        .from('orders')
-        .select('id, order_number, order_date, order_items, order_total, order_profit, status, created_at, order_company_email, phone, table')
+        .from(REAL_ORDERS_TABLE)
+        .select('id, order_date, order_items, order_total, order_profit, status, created_at, order_company_email, phone, table')
         .eq('order_company_email', userEmail)
         .order('id', { ascending: false })
         .range(from, to);
@@ -142,8 +216,8 @@ const Orders = () => {
 
   const fetchOrders = useCallback(async () => {
     Swal.fire({
-      title: 'Fetching sales details...',
-      text: 'Please wait while we load your sales.',
+      title: 'Fetching real orders...',
+      text: 'Please wait while we load your real orders.',
       allowOutsideClick: false,
       didOpen: () => Swal.showLoading(),
     });
@@ -154,18 +228,27 @@ const Orders = () => {
         console.error('User not authenticated:', authError);
         setOrderList([]);
         setFilteredOrders([]);
+        setVatProducts([]);
         return;
       }
       const userEmail = authData.user.email;
-      const orders = await fetchAllOrders(userEmail);
+      const [orders, { data: prodRows, error: prodErr }] = await Promise.all([
+        fetchAllOrders(userEmail),
+        supabase
+          .from('products')
+          .select('id, product_code, product_name, product_selling_price')
+          .eq('product_company_email', userEmail),
+      ]);
+      if (prodErr) console.error('Failed to load products for VAT:', prodErr);
+      setVatProducts((prodRows as VatProductRow[]) ?? []);
       setOrderList(orders);
       setFilteredOrders(orders);
     } catch (e) {
-      console.error('Unexpected error fetching sales:', e);
+      console.error('Unexpected error fetching real orders:', e);
       Swal.fire({
         icon: 'error',
         title: 'Error',
-        text: 'Failed to fetch sales details. Please try again later.',
+        text: 'Failed to fetch real orders. Please try again later.',
         confirmButtonText: 'OK',
       });
     } finally {
@@ -218,14 +301,12 @@ const Orders = () => {
       (sum, o) => sum + (parseFloat(toMoney(o.order_profit)) || 0),
       0,
     );
-    const totalVat = totalSales * 0.15;
-    // Profit: (total sales - 15% VAT) - manufacturing cost of all items
-    // manufacturing = totalSales - totalOrderProfit  => profit = totalOrderProfit - totalVat
+    const totalVat = ordersForPeriod.reduce((sum, o) => sum + orderVat15FromProducts(o, vatLookup), 0);
     const totalProfit = totalOrderProfit - totalVat;
     return {
       totalSales,
       totalVat,
-      totalSalesAfterVat: totalSales * 0.85,
+      totalSalesAfterVat: totalSales - totalVat,
       totalProfit,
     };
   })();
@@ -235,9 +316,14 @@ const Orders = () => {
     const filtered = ordersForPeriod
       .filter((o) => {
         if (!q) return true;
-        const num = o?.order_number != null ? String(o.order_number).toLowerCase() : '';
-        const idStr = o?.id?.toString().toLowerCase() ?? '';
-        return num.includes(q) || idStr.includes(q);
+        const itemsStr = (Array.isArray(o.order_items) ? o.order_items : [])
+          .map((it: any) => `${it?.name ?? ''} ${it?.quantity ?? ''}`)
+          .join(' ')
+          .toLowerCase();
+        const phone = String(o.phone ?? '').toLowerCase();
+        const tbl = String(o.table ?? '').toLowerCase();
+        const dateStr = o.order_date ? new Date(o.order_date).toLocaleDateString().toLowerCase() : '';
+        return itemsStr.includes(q) || phone.includes(q) || tbl.includes(q) || dateStr.includes(q);
       })
       .sort((a, b) => b.id - a.id);
 
@@ -247,7 +333,7 @@ const Orders = () => {
 
   const deleteOrder = async (order: any) => {
     const confirm = await Swal.fire({
-      title: `Are you sure you want to delete Sale #${order.order_number ?? order.id}?`,
+      title: `Are you sure you want to delete Sale #${order.id}?`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#d33',
@@ -258,7 +344,7 @@ const Orders = () => {
     if (!confirm.isConfirmed) return;
 
     try {
-      const { error } = await supabase.from('orders').delete().eq('id', order.id);
+      const { error } = await supabase.from(REAL_ORDERS_TABLE).delete().eq('id', order.id);
       if (error) throw new Error(error.message);
 
       setOrderList((prev) => prev.filter((o) => o.id !== order.id));
@@ -349,15 +435,15 @@ const Orders = () => {
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(18);
-      doc.text(`${periodLabel} Sales Report`, 40, 36);
+      doc.text(`${periodLabel} Real Orders Report`, 40, 36);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       doc.text(`${subLabel}`, 40, 52);
       doc.text(`Generated: ${new Date().toLocaleString()}`, w - 40, 52, { align: 'right' });
       doc.text(`Sales: ${toExport.length}`, 40, 64);
       const grandTotal = toExport.reduce((sum, o) => sum + (parseFloat(toMoney(o.order_total)) || 0), 0);
-      const totalVat = grandTotal * 0.15;
-      const totalSalesAfterVat = grandTotal * 0.85;
+      const totalVat = toExport.reduce((sum, o) => sum + orderVat15FromProducts(o, vatLookup), 0);
+      const totalSalesAfterVat = grandTotal - totalVat;
       const totalOrderProfit = toExport.reduce((sum, o) => sum + (parseFloat(toMoney(o.order_profit)) || 0), 0);
       const totalProfit = totalOrderProfit - totalVat;
       doc.text(`Total: Rs ${grandTotal.toFixed(2)}`, w - 40, 64, { align: 'right' });
@@ -391,12 +477,10 @@ const Orders = () => {
       doc.text(`Rs ${totalProfit.toFixed(2)}`, 55 + (cardWidth + cardGap) * 3, cardStartY + 45);
 
       const rows = toExport.map((o) => {
-        const total = parseFloat(toMoney(o.order_total)) || 0;
-        const vat = total * 0.15;
+        const vat = orderVat15FromProducts(o, vatLookup);
         const baseProfit = parseFloat(toMoney(o.order_profit)) || 0;
         const profitAfterVat = baseProfit - vat;
         return [
-          String(o.order_number ?? o.id),
           o.order_date ? new Date(o.order_date).toLocaleDateString() : '-',
           renderItemsCell(o.order_items || []).substring(0, 80),
           `Rs ${toMoney(o.order_total)}`,
@@ -409,18 +493,17 @@ const Orders = () => {
       const tableStartY = cardStartY + cardHeight + 30;
       (doc as any).autoTable({
         startY: tableStartY,
-        head: [['Order #', 'Date', 'Items', 'Sale Total', 'VAT (15%)', 'Profit']],
+        head: [['Date', 'Items', 'Sale Total', 'VAT (15%)', 'Profit']],
         body: rows,
         theme: 'striped',
         styles: { font: 'helvetica', fontSize: 9, cellPadding: 5 },
         headStyles: { fillColor: [13, 131, 144], textColor: 255, fontStyle: 'bold' },
         columnStyles: {
-          0: { cellWidth: 52 },
-          1: { cellWidth: 55 },
-          2: { cellWidth: 210 },
+          0: { cellWidth: 55 },
+          1: { cellWidth: 250 },
+          2: { cellWidth: 55, halign: 'right' },
           3: { cellWidth: 55, halign: 'right' },
-          4: { cellWidth: 55, halign: 'right' },
-          5: { cellWidth: 100, halign: 'right' },
+          4: { cellWidth: 100, halign: 'right' },
         },
         margin: { left: 40, right: 40 },
         tableWidth,
@@ -433,12 +516,12 @@ const Orders = () => {
       });
 
       const dateStr = new Date().toISOString().slice(0, 10);
-      doc.save(`sales_report_${exportPeriod}_${dateStr}.pdf`);
+      doc.save(`real_orders_report_${exportPeriod}_${dateStr}.pdf`);
       Swal.close();
       Swal.fire({
         icon: 'success',
         title: 'Exported',
-        text: 'Sales report has been downloaded.',
+        text: 'Real orders report has been downloaded.',
         timer: 2000,
         showConfirmButton: false,
       });
@@ -498,7 +581,7 @@ const Orders = () => {
   return (
     <div>
       <div className="flex items-center justify-between flex-wrap gap-4">
-        <h2 className="text-xl">Sales</h2>
+        <h2 className="text-xl">Real Order</h2>
         <div className="flex sm:flex-row flex-col sm:items-center gap-3">
           <div className="flex items-center gap-3">
             <select
@@ -541,7 +624,7 @@ const Orders = () => {
           <div className="relative">
             <input
               type="text"
-              placeholder="Search by order number"
+              placeholder="Search items, phone, table, or date"
               className="form-input py-2 ltr:pr-11 rtl:pl-11 peer"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -580,17 +663,35 @@ const Orders = () => {
             <table className="table-striped table-hover">
               <thead>
                 <tr>
-                  <th>Order #</th>
                   <th>Sale Date</th>
                   <th>Sale Items</th>
                   <th>Sale Total</th>
-                  <th>VAT (15%)</th>
+                  <th>
+                    <Tippy
+                      content={
+                        <span className="block px-2 py-1.5 text-left text-sm">
+                          <span className="font-semibold block mb-1">VAT (15%)</span>
+                          <span className="text-white/90">
+                            15% of each line's catalog selling price (products table × qty), including matched add-ons.
+                            Unmatched lines use the price stored on the order.
+                          </span>
+                        </span>
+                      }
+                      trigger="mouseenter focus"
+                      placement="top"
+                      theme="dark"
+                      animation="scale"
+                      arrow={true}
+                    >
+                      <span className="cursor-help underline decoration-dotted decoration-gray-400">VAT (15%)</span>
+                    </Tippy>
+                  </th>
                   <th>
                     <Tippy
                       content={
                         <span className="block px-2 py-1.5 text-left text-sm">
                           <span className="font-semibold block mb-1">Profit formula</span>
-                          <span className="text-white/90">(Selling price − Buying price) − 15% VAT</span>
+                          <span className="text-white/90">Order profit − VAT (VAT from catalog selling prices)</span>
                         </span>
                       }
                       trigger="mouseenter focus"
@@ -610,17 +711,15 @@ const Orders = () => {
                   .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
                   .map((order) => (
                     <tr key={order.id}>
-                      <td>{order.order_number ?? order.id}</td>
                       <td>{order.order_date ? new Date(order.order_date).toLocaleDateString() : '-'}</td>
                       <td title="Click the eye icon to view full details">
                         {renderItemsCell(order.order_items)}
                       </td>
                       <td>Rs {toMoney(order.order_total)}</td>
-                      <td>Rs {((parseFloat(toMoney(order.order_total)) || 0) * 0.15).toFixed(2)}</td>
+                      <td>Rs {orderVat15FromProducts(order, vatLookup).toFixed(2)}</td>
                       <td>
                         {(() => {
-                          const total = parseFloat(toMoney(order.order_total)) || 0;
-                          const vat = total * 0.15;
+                          const vat = orderVat15FromProducts(order, vatLookup);
                           const baseProfit = parseFloat(toMoney(order.order_profit)) || 0;
                           const profitAfterVat = baseProfit - vat;
                           return <>Rs {profitAfterVat.toFixed(2)}</>;
@@ -700,7 +799,7 @@ const Orders = () => {
                     ✕
                   </button>
                   <div className="p-6">
-                    <h3 className="text-xl font-semibold mb-4">Sale #{viewOrder?.order_number ?? viewOrder?.id}</h3>
+                    <h3 className="text-xl font-semibold mb-4">Sale #{viewOrder?.id}</h3>
                     {viewOrder && (
                       <div>
                         <div className="border-b border-gray-200 dark:border-gray-700 pb-3 mb-3 text-sm grid grid-cols-2 gap-y-1">
@@ -739,4 +838,4 @@ const Orders = () => {
   );
 };
 
-export default Orders;
+export default RealOrders;

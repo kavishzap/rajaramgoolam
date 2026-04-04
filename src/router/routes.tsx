@@ -11,6 +11,7 @@ const Products = lazy(() => import('../pages/Apps/Products'));
 const StockManagement = lazy(() => import('../pages/Apps/StockManagement'));
 const Suppliers = lazy(() => import('../pages/Apps/Suppliers'));
 const Orders = lazy(() => import('../pages/Apps/orders'));
+const RealOrders = lazy(() => import('../pages/Apps/realOrders'));
 const EPOS = lazy(() => import('../pages/Apps/EPOS'));
 const Chat = lazy(() => import('../pages/Apps/Chat'));
 const Scrumboard = lazy(() => import('../pages/Apps/Scrumboard'));
@@ -175,6 +176,10 @@ const routes = [
     {
         path: '/orders',
         element: <Orders />,
+    },
+    {
+        path: '/real-orders',
+        element: <RealOrders />,
     },
     {
         path: '/apps/mailbox',
